@@ -37,11 +37,12 @@ export default function SignupPage() {
 
         if (authData.user) {
             // 2. Create the Profile Record
+            // Ensures the profile is linked to the authenticated user
             const { error: profileError } = await supabase
                 .from('profiles')
                 .insert([
                     {
-                        id: authData.user.id, // CRITICAL: Links profile to the login
+                        id: authData.user.id,
                         full_name: fullName,
                         phone: phone,
                         fitness_goals: goals,
@@ -51,6 +52,7 @@ export default function SignupPage() {
                 ]);
 
             if (profileError) {
+                console.error('Profile creation error:', profileError);
                 setErrorMsg('Account created, but profile failed: ' + profileError.message);
                 setLoading(false);
             } else {

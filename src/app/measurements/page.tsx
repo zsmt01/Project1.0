@@ -42,16 +42,16 @@ export default function MeasurementPage() {
 
         const { error } = await supabase.from('measurements').insert([
             {
-                user_id: userId, // Links to the user from Step 1
-                height_cm: parseFloat(height),
-                waist_cm: parseFloat(waist),
-                hip_cm: parseFloat(hip),
-                arm_left_cm: parseFloat(armLeft),
-                arm_right_cm: parseFloat(armRight),
-                leg_left_cm: parseFloat(legLeft),
-                leg_right_cm: parseFloat(legRight),
-                body_fat_percent: parseFloat(bodyFat),
-                bmi: parseFloat(bmi),
+                user_id: userId,
+                height_cm: height ? parseFloat(height) : null,
+                waist_cm: waist ? parseFloat(waist) : null,
+                hip_cm: hip ? parseFloat(hip) : null,
+                arm_left_cm: armLeft ? parseFloat(armLeft) : null,
+                arm_right_cm: armRight ? parseFloat(armRight) : null,
+                leg_left_cm: legLeft ? parseFloat(legLeft) : null,
+                leg_right_cm: legRight ? parseFloat(legRight) : null,
+                body_fat_percent: bodyFat ? parseFloat(bodyFat) : null,
+                bmi: bmi ? parseFloat(bmi) : null,
                 notes: notes,
             }
         ]);
