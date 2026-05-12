@@ -12,8 +12,16 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Week Navigation State
     const [currentWeekStart, setCurrentWeekStart] = useState(getMonday(new Date()));
+
+    const formatLocal = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:00`;
+    };
 
     const goToPrevWeek = () => {
         setCurrentWeekStart(prev => {
@@ -110,7 +118,7 @@ export default function AdminDashboard() {
 
     // 1. Manage Requests (Inbox)
     const handleAction = async (id: string, status: 'confirmed' | 'rejected') => {
-        await supabase.from('requests').update({ status }).eq('id', id);
+        await supabase.from('requests').update({ status, move_status: 'none' }).eq('id', id);
         fetchData(); // Refresh
     };
 
@@ -128,7 +136,7 @@ export default function AdminDashboard() {
         if (!selectedSession) return;
         setIsSavingNotes(true);
         await supabase.from('requests').update({ notes: notesInput }).eq('id', selectedSession.id);
-        
+
         setSelectedSession({ ...selectedSession, notes: notesInput });
         fetchData();
         setIsSavingNotes(false);
@@ -224,8 +232,8 @@ export default function AdminDashboard() {
 
             if (reason) {
                 await supabase.from('blocked_time').insert([{
-                    start_time: selection.start.toISOString(),
-                    end_time: selection.end.toISOString(),
+                    start_time: formatLocal(selection.start),
+                    end_time: formatLocal(selection.end),
                     reason
                 }]);
                 fetchData();
@@ -247,8 +255,9 @@ export default function AdminDashboard() {
                     const newEnd = new Date(dragRequestNewStart.getTime() + durationMs);
 
                     await supabase.from('requests').update({
-                        proposed_start: dragRequestNewStart.toISOString(),
-                        proposed_end: newEnd.toISOString(),
+                        status: 'confirmed',
+                        proposed_start: formatLocal(dragRequestNewStart),
+                        proposed_end: formatLocal(newEnd),
                         move_status: 'pending'
                     }).eq('id', dragRequest.id);
 
@@ -276,7 +285,7 @@ export default function AdminDashboard() {
     );
 
     const pendingRequests = requests.filter(r => r.status === 'pending');
-    const confirmedRequests = requests.filter(r => r.status === 'confirmed');
+    const calendarRequests = requests.filter(r => r.status === 'confirmed' || (r.status === 'pending' && r.move_status === 'rejected'));
 
     return (
         <div className="min-h-screen bg-gray-100 p-6 flex flex-col gap-6" onMouseUp={handleMouseUp} onMouseLeave={() => { setIsDragging(false); setIsDraggingRequest(false); }}>
@@ -318,6 +327,11 @@ export default function AdminDashboard() {
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
                                         <h3 className="font-bold text-gray-900">{req.profiles?.full_name || 'Unknown User'}</h3>
+                                        {req.move_status === 'rejected' && (
+                                            <span className="inline-block bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded mb-1">
+                                                Reschedule Denied
+                                            </span>
+                                        )}
                                         <p className="text-xs text-gray-500">{req.profiles?.fitness_goals || 'No goals set'}</p>
                                     </div>
                                     <div className="text-right">
@@ -423,8 +437,8 @@ export default function AdminDashboard() {
                                 </div>
                             )}
 
-                            {/* 1. Confirmed Bookings (Blue) */}
-                            {confirmedRequests.map(req => {
+                            {/* 1. Confirmed Bookings & Pending Rejected (Blue/Red) */}
+                            {calendarRequests.map(req => {
                                 const start = req.move_status === 'pending' ? new Date(req.proposed_start) : new Date(req.start_time);
                                 const end = req.move_status === 'pending' ? new Date(req.proposed_end) : new Date(req.end_time);
 
@@ -547,8 +561,8 @@ export default function AdminDashboard() {
                                     onClick={handleSaveNotes}
                                     disabled={isSavingNotes || notesInput === (selectedSession.notes || "")}
                                     className={`cursor-pointer mt-2 w-full py-2 font-bold rounded-lg transition text-sm
-                                        ${isSavingNotes 
-                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
+                                        ${isSavingNotes
+                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                                             : notesInput === (selectedSession.notes || "")
                                                 ? 'bg-gray-100 text-gray-400'
                                                 : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200 shadow-sm'}

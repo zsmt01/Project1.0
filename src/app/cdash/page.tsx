@@ -290,6 +290,7 @@ export default function Dashboard() {
         if (!confirm("Decline this time change?")) return;
 
         await supabase.from('requests').update({
+            status: 'pending',
             move_status: 'rejected',
             proposed_start: null,
             proposed_end: null
@@ -500,26 +501,33 @@ export default function Dashboard() {
                         ) : (
                             <div className="space-y-3">
                                 {requests.map((req) => (
-                                    <div key={req.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100">
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-gray-700">
-                                                {new Date(req.start_time).toLocaleDateString('en-US', {
-                                                    weekday: 'short', month: 'short', day: 'numeric'
-                                                })}
-                                            </span>
-                                            <span className="text-sm text-gray-500">
-                                                {new Date(req.start_time).toLocaleTimeString('en-US', {
-                                                    hour: 'numeric', minute: '2-digit'
-                                                })}
-                                                {' - '}
-                                                {new Date(req.end_time).toLocaleTimeString('en-US', {
-                                                    hour: 'numeric', minute: '2-digit'
-                                                })}
+                                    <div key={req.id} className="flex flex-col p-3 rounded-lg bg-gray-50 border border-gray-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-gray-700">
+                                                    {new Date(req.start_time).toLocaleDateString('en-US', {
+                                                        weekday: 'short', month: 'short', day: 'numeric'
+                                                    })}
+                                                </span>
+                                                <span className="text-sm text-gray-500">
+                                                    {new Date(req.start_time).toLocaleTimeString('en-US', {
+                                                        hour: 'numeric', minute: '2-digit'
+                                                    })}
+                                                    {' - '}
+                                                    {new Date(req.end_time).toLocaleTimeString('en-US', {
+                                                        hour: 'numeric', minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(req.status)} uppercase tracking-wide`}>
+                                                {req.status}
                                             </span>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(req.status)} uppercase tracking-wide`}>
-                                            {req.status}
-                                        </span>
+                                        {req.status === 'pending' && req.move_status === 'rejected' && (
+                                            <div className="mt-1 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">
+                                                Time change declined. The coach has been notified. You can wait for their response or book a different slot.
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
