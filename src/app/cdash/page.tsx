@@ -32,6 +32,19 @@ export default function Dashboard() {
     // --- ACTIONS DROPDOWN STATE ---
     const [showActions, setShowActions] = useState(false);
 
+    // --- SESSION REQUESTS MODAL STATE ---
+    const [showAllRequestsModal, setShowAllRequestsModal] = useState(false);
+    const [requestFilter, setRequestFilter] = useState('all');
+
+    // --- LOADING STATE ---
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
+
+    const filteredRequests = requests.filter(req => {
+        if (requestFilter === 'all') return true;
+        return req.status === requestFilter;
+    });
+
 
     const nextSlide = () => {
         setCurrentSlide((prev) => (prev + 1) % slides.length);
@@ -44,7 +57,7 @@ export default function Dashboard() {
     // Filter confirmed future sessions
     const upcomingSessions = requests.filter(r =>
         r.status === 'confirmed' && new Date(r.start_time) > new Date()
-    ).slice(0, 3); // Show top 3
+    ).slice(0, 5); // Show top 5
 
     const pendingProposals = requests.filter(r => r.move_status === 'pending');
 
@@ -53,6 +66,7 @@ export default function Dashboard() {
         let channel: any;
 
         const getData = async () => {
+            setLoadingProgress(10);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 router.push('/login');
@@ -60,14 +74,23 @@ export default function Dashboard() {
             }
 
             // 1. Get Profile
+            setLoadingProgress(30);
             const { data: profileData } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
                 .single();
             setProfile(profileData);
+            setLoadingProgress(50);
 
-            // 2. Get Requests
+            // 2. Delete past requests (cleanup)
+            await supabase
+                .from('requests')
+                .delete()
+                .eq('user_id', user.id)
+                .lt('end_time', new Date().toISOString());
+
+            // 3. Get Requests
             const { data: requestData } = await supabase
                 .from('requests')
                 .select('*')
@@ -84,6 +107,7 @@ export default function Dashboard() {
                 .gte('end_time', new Date().toISOString());
 
             if (allReqData) setAllRequests(allReqData);
+            setLoadingProgress(75);
 
             // 3. Get Blocked Time (Initial Fetch)
             const { data: blockedData } = await supabase
@@ -91,6 +115,8 @@ export default function Dashboard() {
                 .select('*');
 
             if (blockedData) setBlockedTime(blockedData);
+            setLoadingProgress(100);
+            setTimeout(() => setIsLoading(false), 600);
 
             // 4. Realtime Subscription for Blocked Time AND Requests
             channel = supabase
@@ -142,7 +168,7 @@ export default function Dashboard() {
 
     const generateTimeSlots = (dateStr: string) => {
         const slots = [];
-        const startHour = 6; // 6:00 AM
+        const startHour = 8; // 8:00 AM
         const endHour = 22; // 10:00 PM
 
         for (let i = startHour; i < endHour; i++) {
@@ -247,6 +273,7 @@ export default function Dashboard() {
                 alert('Request Sent!');
                 setStartTime(null);
                 setEndTime(null);
+                setSelectedDate(null);
                 // Refresh requests list explicitly as a fallback
                 const fallbackFetch = async () => {
                     const { data: newRequests } = await supabase
@@ -281,7 +308,44 @@ export default function Dashboard() {
         }
     };
 
-    if (!profile) return <div className="p-10">Loading Dashboard...</div>;
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-blue-800 flex flex-col items-center justify-center relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-blue-700 opacity-50"></div>
+                <div className="relative z-10 flex flex-col items-center">
+                    {profile?.full_name && (
+                        <h1 className="text-4xl font-extrabold text-white mb-8 drop-shadow-lg animate-pulse text-center">
+                            {`Welcome ${profile.full_name.split(' ')[0]}`}
+                        </h1>
+                    )}
+
+                    {/* Dumbbell fill-up progress */}
+                    <div className="relative w-40 h-20">
+                        {/* Grayed-out silhouette */}
+                        <svg className="absolute inset-0 w-full h-full text-gray-500 opacity-30" viewBox="0 0 120 60" fill="currentColor">
+                            <polygon points="20,10 35,10 40,20 40,40 35,50 20,50 15,40 15,20" />
+                            <rect x="40" y="22" width="40" height="16" />
+                            <polygon points="100,10 85,10 80,20 80,40 85,50 100,50 105,40 105,20" />
+                        </svg>
+
+                        {/* Colored fill (bottom-to-top) */}
+                        <div
+                            className="absolute inset-0 overflow-hidden transition-all duration-500 ease-out"
+                            style={{ clipPath: `inset(${100 - loadingProgress}% 0 0 0)` }}
+                        >
+                            <svg className="w-full h-full text-blue-400" viewBox="0 0 120 60" fill="currentColor">
+                                <polygon points="20,10 35,10 40,20 40,40 35,50 20,50 15,40 15,20" />
+                                <rect x="40" y="22" width="40" height="16" />
+                                <polygon points="100,10 85,10 80,20 80,40 85,50 100,50 105,40 105,20" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!profile) return null;
 
     const days = getDaysInMonth(currentMonth);
     const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -316,7 +380,7 @@ export default function Dashboard() {
 
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 relative" onClick={() => setShowActions(false)}>
+        <div className="min-h-screen bg-blue-800 p-6 relative" onClick={() => setShowActions(false)}>
 
             {/* NOTIFICATION CENTER (Top Right) */}
             {pendingProposals.length > 0 && (
@@ -366,19 +430,13 @@ export default function Dashboard() {
             )}
 
             {/* 1. WELCOME HEADER */}
-            <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-blue-900">
-                        Welcome back, {profile.full_name?.split(' ')[0]}!
-                    </h1>
-                    <p className="text-gray-600 mt-1">You've been consistent for 3 weeks straight.</p>
-                </div>
-                <div className="mt-4 md:mt-0 relative">
+            <header className="mb-10 flex flex-col md:flex-row md:items-center md:justify-between">
+                <div className="mt-10 md:mt-0 absolute top-2 left-2">
                     <button
                         onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
                         className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow hover:bg-blue-700 transition flex items-center gap-2"
                     >
-                        Actions ▾
+                        Actions
                     </button>
 
                     {showActions && (
@@ -414,7 +472,7 @@ export default function Dashboard() {
                                 {slides[currentSlide].title}
                             </h3>
                             <div className="flex items-center gap-2">
-                                <button onClick={prevSlide} className="cursor-pointer p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-blue-600 transition">
+                                <button onClick={prevSlide} className="cursor-pointer p-2 border-2 border-black hover:bg-blue-600 rounded-full text-gray-600 hover:text-white transition hover:border-gray-50 hover:shadow">
                                     ←
                                 </button>
                                 <div className="flex gap-1">
@@ -425,7 +483,7 @@ export default function Dashboard() {
                                         />
                                     ))}
                                 </div>
-                                <button onClick={nextSlide} className="cursor-pointer p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-blue-600 transition">
+                                <button onClick={nextSlide} className="cursor-pointer p-2 border-2 border-black hover:bg-blue-600 rounded-full text-gray-600 hover:text-white transition hover:border-gray-50 hover:shadow">
                                     →
                                 </button>
                             </div>
@@ -449,38 +507,33 @@ export default function Dashboard() {
 
                             {/* SLIDE 2: UPCOMING SESSIONS */}
                             <div className={`transition-opacity duration-500 absolute inset-0 ${currentSlide === 1 ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-                                <div className="h-full overflow-y-auto pr-1">
+                                <div className="h-full">
                                     {upcomingSessions.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-gray-400">
                                             <p>No upcoming confirmed sessions.</p>
-                                            <button
-                                                onClick={() => {
-                                                    const calendarElement = document.getElementById('booking-calendar');
-                                                    if (calendarElement) calendarElement.scrollIntoView({ behavior: 'smooth' });
-                                                }}
-                                                className="mt-2 text-blue-600 hover:underline text-sm"
-                                            >
-                                                Book one below!
-                                            </button>
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {upcomingSessions.map(session => (
+                                        <div className="grid grid-cols-5 md:grid-cols-5 gap-4">
+                                            {upcomingSessions.map((session, idx) => (
                                                 <div
                                                     key={session.id}
                                                     onClick={() => setSelectedSessionView(session)}
-                                                    className="bg-linear-to-br from-blue-500 to-blue-600 text-white p-4 rounded-xl shadow-md transform transition hover:scale-[1.02] cursor-pointer"
+                                                    className="bg-linear-to-br from-blue-500 to-blue-800 text-white p-4 rounded-md shadow-md transform transition hover:scale-[1.07] cursor-pointer animate-revolver opacity-0"
+                                                    style={{ animationDelay: `${idx * 150}ms` }}
                                                 >
                                                     <div className="flex justify-between items-start mb-2">
                                                         <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-medium">Confirmed</span>
                                                         <span className="text-2xl opacity-50">🏋️</span>
                                                     </div>
                                                     <p className="text-lg font-bold">
-                                                        {new Date(session.start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                                                        {new Date(session.start_time).toLocaleDateString('en-US', { weekday: 'long' })}, <br />
+                                                        {new Date(session.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                                     </p>
+                                                    <br />
+                                                    <br />
                                                     <p className="text-blue-100 font-mono text-sm mt-1">
-                                                        {new Date(session.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                                                        {' - '}
+                                                        {new Date(session.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} <br />
+                                                        {' - '} <br />
                                                         {new Date(session.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                                                     </p>
                                                 </div>
@@ -499,51 +552,46 @@ export default function Dashboard() {
                         {requests.length === 0 ? (
                             <p className="text-gray-500 italic">No bookings yet. Pick a time on the calendar!</p>
                         ) : (
-                            <div className="space-y-3">
-                                {requests.map((req) => (
-                                    <div key={req.id} className="flex flex-col p-3 rounded-lg bg-gray-50 border border-gray-100">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-gray-700">
-                                                    {new Date(req.start_time).toLocaleDateString('en-US', {
-                                                        weekday: 'short', month: 'short', day: 'numeric'
-                                                    })}
-                                                </span>
-                                                <span className="text-sm text-gray-500">
-                                                    {new Date(req.start_time).toLocaleTimeString('en-US', {
-                                                        hour: 'numeric', minute: '2-digit'
-                                                    })}
-                                                    {' - '}
-                                                    {new Date(req.end_time).toLocaleTimeString('en-US', {
-                                                        hour: 'numeric', minute: '2-digit'
-                                                    })}
-                                                </span>
-                                            </div>
-                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(req.status)} uppercase tracking-wide`}>
-                                                {req.status}
+                            <div className="space-y-4">
+                                <div className="flex flex-col p-4 rounded-xl bg-gray-50 border border-gray-100 shadow-sm">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-gray-800 text-lg">
+                                                {new Date(requests[0].start_time).toLocaleDateString('en-US', {
+                                                    weekday: 'short', month: 'short', day: 'numeric'
+                                                })}
+                                            </span>
+                                            <span className="text-sm text-gray-500 font-medium">
+                                                {new Date(requests[0].start_time).toLocaleTimeString('en-US', {
+                                                    hour: 'numeric', minute: '2-digit'
+                                                })}
+                                                {' - '}
+                                                {new Date(requests[0].end_time).toLocaleTimeString('en-US', {
+                                                    hour: 'numeric', minute: '2-digit'
+                                                })}
                                             </span>
                                         </div>
-                                        {req.status === 'pending' && req.move_status === 'rejected' && (
-                                            <div className="mt-1 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">
-                                                Time change declined. The coach has been notified. You can wait for their response or book a different slot.
-                                            </div>
-                                        )}
+                                        <span className={`px-4 py-1.5 rounded-full text-xs font-extrabold border ${getStatusColor(requests[0].status)} uppercase tracking-wider`}>
+                                            {requests[0].status}
+                                        </span>
                                     </div>
-                                ))}
+                                    {requests[0].status === 'pending' && requests[0].move_status === 'rejected' && (
+                                        <div className="mt-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
+                                            Time change declined. The coach has been notified.
+                                        </div>
+                                    )}
+                                </div>
+                                {requests.length > 2 && (
+                                    <button
+                                        onClick={() => setShowAllRequestsModal(true)}
+                                        className="cursor-pointer w-full py-2.5 rounded-xl bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition border border-blue-100 shadow-sm"
+                                    >
+                                        View All Requests
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
-
-                    {/* 4. TRAINER NOTES */}
-                    <div className="bg-yellow-50 p-6 rounded-2xl border border-yellow-100 relative">
-                        <div className="absolute top-4 right-4 text-yellow-400 text-4xl opacity-20">❝</div>
-                        <h3 className="text-lg font-bold text-yellow-800 mb-2">Note from Chacha:</h3>
-                        <p className="text-yellow-900 italic">
-                            "Great energy on Tuesday! Let's focus on your form for the squats next time.
-                            Don't forget to stretch your hamstrings."
-                        </p>
-                    </div>
-
                 </div>
 
                 {/* RIGHT COLUMN (1/3 Width) */}
@@ -551,17 +599,16 @@ export default function Dashboard() {
 
                     {/* 5. BOOKING WIDGET */}
                     <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
-                        <h3 className="text-xl font-bold text-blue-900 mb-4">Book Next Session</h3>
-
+                        <h3 className="text-center font-bold text-blue-900 mb-4">Book Next Session</h3>
                         <div className="flex items-center justify-between mb-4">
-                            <button onClick={() => changeMonth(-1)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">←</button>
+                            <button onClick={() => changeMonth(-1)} className="p-2 border-2 border-black hover:bg-blue-600 rounded-full text-gray-600 hover:text-white transition hover:border-gray-50 hover:shadow">←</button>
                             <span className="font-bold text-lg text-gray-800">{monthName}</span>
-                            <button onClick={() => changeMonth(1)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full">→</button>
+                            <button onClick={() => changeMonth(1)} className="p-2 border-2 border-black hover:bg-blue-600 rounded-full text-gray-600 hover:text-white transition hover:border-gray-50 hover:shadow">→</button>
                         </div>
 
                         <div className="grid grid-cols-7 text-center mb-2">
                             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-                                <div key={d} className="text-xs font-semibold text-gray-400">{d}</div>
+                                <div key={d} className="text-xs font-semibold text-black">{d}</div>
                             ))}
                         </div>
 
@@ -594,76 +641,159 @@ export default function Dashboard() {
                             })}
                         </div>
 
-                        {selectedDate ? (
-                            <div className="space-y-4 animate-fade-in-up">
-                                <p className="text-sm font-semibold text-gray-500">
-                                    {startTime && endTime
-                                        ? `Selected: ${startTime} - ${endTime}`
-                                        : "Select a Session Block"}
-                                </p>
-                                <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-200">
-                                    {availableSlots.map((slotObj) => {
-                                        const isSelected = slotObj.timeString === startTime;
-
-                                        let bgClass = "bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50";
-                                        if (slotObj.isPast) {
-                                            bgClass = "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200 opacity-50";
-                                        } else if (slotObj.hasMyRequest) {
-                                            bgClass = "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200 opacity-75";
-                                        } else if (isSelected) {
-                                            bgClass = "bg-blue-600 text-white border-blue-600 shadow-lg transform scale-105";
-                                        } else if (slotObj.demandCount > 0) {
-                                            if (slotObj.demandCount <= 2) bgClass = "bg-green-100 text-green-900 border-green-300 hover:bg-green-200 shadow-inner";
-                                            else if (slotObj.demandCount <= 5) bgClass = "bg-yellow-100 text-yellow-900 border-yellow-300 hover:bg-yellow-200 shadow-inner";
-                                            else bgClass = "bg-red-100 text-red-900 border-red-300 hover:bg-red-200 shadow-inner";
-                                        }
-
-                                        const isDisabled = slotObj.hasMyRequest || slotObj.isPast;
-
-                                        return (
-                                            <button
-                                                key={slotObj.timeString}
-                                                onClick={() => !isDisabled && handleTimeClick(slotObj.timeString)}
-                                                disabled={isDisabled}
-                                                className={`cursor-pointer py-3 px-2 rounded-xl text-sm font-semibold transition border ${bgClass}`}
-                                            >
-                                                {slotObj.timeString}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                {startTime && endTime && (
-                                    <button
-                                        onClick={confirmBooking}
-                                        className="cursor-pointer w-full py-3 rounded-xl bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition animate-bounce-in"
-                                    >
-                                        Confirm Booking
-                                    </button>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="text-center py-8 text-gray-400 text-sm">
-                                Select a date to see available times.
-                            </div>
-                        )}
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                            Select a date on the calendar to see available times.
+                        </div>
                     </div>
+                </div>
+            </div>
 
-                    {/* Quick Actions */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h3>
-                        <div className="flex flex-col gap-3">
-                            <button className="cursor-pointer w-full text-left p-3 rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition flex items-center gap-3">
-                                👤 Update Profile
-                            </button>
-                            <button className="cursor-pointer w-full text-left p-3 rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition flex items-center gap-3">
-                                📞 Call Chacha (Support)
+            {/* TIME SELECTION MODAL */}
+            {selectedDate && (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-fade-in-up">
+                        <div className="text-center mb-6">
+                            <span className="text-4xl">📅</span>
+                            <h2 className="text-2xl font-extrabold text-blue-900 mt-2">
+                                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </h2>
+                        </div>
+
+                        <div className="space-y-4">
+                            <p className="text-sm font-semibold text-center text-gray-500">
+                                {startTime && endTime
+                                    ? `Selected: ${startTime} - ${endTime}`
+                                    : "Select a Session Block"}
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto overflow-x-hidden pr-2 scrollbar-thin scrollbar-thumb-gray-200">
+                                {availableSlots.map((slotObj) => {
+                                    const isSelected = slotObj.timeString === startTime;
+
+                                    let bgClass = "bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50";
+                                    if (slotObj.isPast) {
+                                        bgClass = "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200 opacity-50";
+                                    } else if (slotObj.hasMyRequest) {
+                                        bgClass = "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200 opacity-75";
+                                    } else if (isSelected) {
+                                        bgClass = "bg-blue-600 text-white border-blue-600 shadow-lg transform scale-105";
+                                    } else if (slotObj.demandCount > 0) {
+                                        if (slotObj.demandCount <= 2) bgClass = "bg-green-100 text-green-900 border-green-300 hover:bg-green-200 shadow-inner";
+                                        else if (slotObj.demandCount <= 5) bgClass = "bg-yellow-100 text-yellow-900 border-yellow-300 hover:bg-yellow-200 shadow-inner";
+                                        else bgClass = "bg-red-100 text-red-900 border-red-300 hover:bg-red-200 shadow-inner";
+                                    }
+
+                                    const isDisabled = slotObj.hasMyRequest || slotObj.isPast;
+
+                                    return (
+                                        <button
+                                            key={slotObj.timeString}
+                                            onClick={() => !isDisabled && handleTimeClick(slotObj.timeString)}
+                                            disabled={isDisabled}
+                                            className={`cursor-pointer py-3 px-2 rounded-xl text-sm font-semibold transition border ${bgClass}`}
+                                        >
+                                            {slotObj.timeString}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {startTime && endTime && (
+                                <button
+                                    onClick={confirmBooking}
+                                    className="cursor-pointer w-full py-3 mt-4 rounded-xl bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition animate-bounce-in"
+                                >
+                                    Confirm Booking
+                                </button>
+                            )}
+
+                            <button
+                                onClick={() => {
+                                    setSelectedDate(null);
+                                    setStartTime(null);
+                                    setEndTime(null);
+                                }}
+                                className="cursor-pointer w-full py-3 mt-2 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition"
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>
-
                 </div>
-            </div>
+            )}
+
+            {/* ALL SESSION REQUESTS MODAL */}
+            {showAllRequestsModal && (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-extrabold text-blue-900 flex items-center gap-2">
+                                <span className="text-3xl">📋</span> All Requests
+                            </h2>
+                            <button onClick={() => setShowAllRequestsModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold p-2 cursor-pointer">
+                                ✖
+                            </button>
+                        </div>
+
+                        {/* Filters */}
+                        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-200">
+                            {['all', 'confirmed', 'pending', 'rejected'].map(filter => (
+                                <button
+                                    key={filter}
+                                    onClick={() => setRequestFilter(filter)}
+                                    className={`cursor-pointer px-4 py-2 rounded-full text-sm font-bold capitalize whitespace-nowrap transition-colors ${requestFilter === filter
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {filter}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* List */}
+                        <div className="overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-gray-200 flex-1">
+                            {filteredRequests.length === 0 ? (
+                                <div className="text-center text-gray-400 py-10">
+                                    No requests found for this filter.
+                                </div>
+                            ) : (
+                                filteredRequests.map(req => (
+                                    <div key={req.id} className="flex flex-col p-4 rounded-xl bg-gray-50 border border-gray-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-gray-800">
+                                                    {new Date(req.start_time).toLocaleDateString('en-US', {
+                                                        weekday: 'short', month: 'short', day: 'numeric'
+                                                    })}
+                                                </span>
+                                                <span className="text-sm text-gray-500 font-medium">
+                                                    {new Date(req.start_time).toLocaleTimeString('en-US', {
+                                                        hour: 'numeric', minute: '2-digit'
+                                                    })}
+                                                    {' - '}
+                                                    {new Date(req.end_time).toLocaleTimeString('en-US', {
+                                                        hour: 'numeric', minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(req.status)} uppercase tracking-wide`}>
+                                                {req.status}
+                                            </span>
+                                        </div>
+                                        {req.status === 'pending' && req.move_status === 'rejected' && (
+                                            <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">
+                                                Time change declined. The coach has been notified.
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+            )}
 
             {/* SESSION DETAILS MODAL */}
             {selectedSessionView && (
@@ -687,10 +817,10 @@ export default function Dashboard() {
                                 </p>
                             </div>
 
-                            {selectedSessionView.notes ? (
+                            {profile.trainer_notes ? (
                                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 relative">
                                     <p className="text-sm font-semibold text-blue-400 uppercase tracking-wide mb-1">Trainer Notes</p>
-                                    <p className="text-blue-900 italic">"{selectedSessionView.notes}"</p>
+                                    <p className="text-blue-900 italic">"{profile.trainer_notes}"</p>
                                 </div>
                             ) : (
                                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 relative">

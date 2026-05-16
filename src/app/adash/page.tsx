@@ -10,6 +10,7 @@ export default function AdminDashboard() {
     const [requests, setRequests] = useState<any[]>([]);
     const [blockedTime, setBlockedTime] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
 
     const [currentWeekStart, setCurrentWeekStart] = useState(getMonday(new Date()));
@@ -73,9 +74,11 @@ export default function AdminDashboard() {
     // Fetch Data
     const fetchData = async () => {
         setLoading(true);
+        setLoadingProgress(10);
         setError(null);
         try {
             // 1. Fetch Requests (Filter out past sessions based on end_time)
+            setLoadingProgress(30);
             const { data: reqs, error: reqError } = await supabase
                 .from('requests')
                 .select('*, profiles(full_name, phone, fitness_goals)')
@@ -84,6 +87,7 @@ export default function AdminDashboard() {
 
             if (reqError) throw reqError;
             if (reqs) setRequests(reqs);
+            setLoadingProgress(60);
 
             // 2. Fetch Blocked Time
             const { data: blocks, error: blockError } = await supabase
@@ -92,11 +96,12 @@ export default function AdminDashboard() {
 
             if (blockError) throw blockError;
             if (blocks) setBlockedTime(blocks);
+            setLoadingProgress(100);
         } catch (err: any) {
             console.error("Dashboard Fetch Error:", err);
             setError(err.message || "An unexpected error occurred");
         } finally {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 600);
         }
     };
 
@@ -271,7 +276,33 @@ export default function AdminDashboard() {
     };
 
 
-    if (loading) return <div className="p-10">Loading Admin Dashboard...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-blue-800 flex flex-col items-center justify-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-blue-700 opacity-50"></div>
+            <div className="relative z-10 flex flex-col items-center">
+                <div className="relative w-40 h-20">
+                    {/* Grayed-out silhouette */}
+                    <svg className="absolute inset-0 w-full h-full text-gray-500 opacity-30" viewBox="0 0 120 60" fill="currentColor">
+                        <polygon points="20,10 35,10 40,20 40,40 35,50 20,50 15,40 15,20" />
+                        <rect x="40" y="22" width="40" height="16" />
+                        <polygon points="100,10 85,10 80,20 80,40 85,50 100,50 105,40 105,20" />
+                    </svg>
+
+                    {/* Colored fill (bottom-to-top) */}
+                    <div
+                        className="absolute inset-0 overflow-hidden transition-all duration-500 ease-out"
+                        style={{ clipPath: `inset(${100 - loadingProgress}% 0 0 0)` }}
+                    >
+                        <svg className="w-full h-full text-blue-400" viewBox="0 0 120 60" fill="currentColor">
+                            <polygon points="20,10 35,10 40,20 40,40 35,50 20,50 15,40 15,20" />
+                            <rect x="40" y="22" width="40" height="16" />
+                            <polygon points="100,10 85,10 80,20 80,40 85,50 100,50 105,40 105,20" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
     if (error) return (
         <div className="p-10">
             <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">

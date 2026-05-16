@@ -51,7 +51,7 @@ export default function LoginPage() {
             <div className="w-full max-w-md bg-white p-8 shadow-xl rounded-2xl">
 
                 <div className="mb-6 text-center">
-                    <h1 className="text-3xl font-extrabold text-blue-900">Welcome Back</h1>
+                    <h1 className="text-3xl font-extrabold text-blue-900">Welcome</h1>
                     <p className="text-gray-500 mt-2">Please sign in to your account</p>
                 </div>
 

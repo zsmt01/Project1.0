@@ -14,6 +14,7 @@ alter table public.profiles add column if not exists phone text;
 alter table public.profiles add column if not exists role text default 'client';
 alter table public.profiles add column if not exists fitness_goals text;
 alter table public.profiles add column if not exists injuries text;
+alter table public.profiles add column if not exists trainer_notes text;
 -- 2. Create the REQUESTS table
 create table if not exists public.requests (
   id uuid default gen_random_uuid() primary key,
